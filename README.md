@@ -2,6 +2,8 @@
 
 A Kubernetes CronJob that automatically cleans up pods stuck in Terminating state.
 
+![Architecture Diagram](docs/architecture.svg)
+
 ## Problem
 
 In Kubernetes clusters, pods can sometimes get stuck in the Terminating state, especially when nodes become unhealthy. This can cause resource leaks, block deployments, and create critical situations in production environments.
