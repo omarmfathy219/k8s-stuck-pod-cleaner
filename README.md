@@ -18,7 +18,7 @@ This project provides a simple yet effective solution: a Kubernetes CronJob that
 
 ## How It Works
 
-![Workflow Diagram](docs/workflow.mermaid)
+![Workflow Diagram](docs/workflow.png)
 
 The stuck pod cleaner follows this process:
 
