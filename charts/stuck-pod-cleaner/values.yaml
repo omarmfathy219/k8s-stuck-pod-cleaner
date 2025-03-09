@@ -1,0 +1,63 @@
+# Default values for stuck-pod-cleaner.
+# This is a YAML-formatted file.
+
+# Configure the namespace where the cleaner will be deployed
+namespace: kube-system
+
+# Configure the namespace scanning
+namespaces:
+  # scan all namespaces (recommended)
+  scanAll: true
+  # list of specific namespaces to scan (only used if scanAll is false)
+  include: []
+  # list of namespaces to exclude even when scanAll is true
+  exclude: []
+
+# CronJob configuration
+cronJob:
+  # Schedule for the CronJob (every minute by default)
+  schedule: "* * * * *"
+  # Concurrency policy (Forbid, Allow, or Replace)
+  concurrencyPolicy: Forbid
+  # History configuration
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Job timeout in seconds
+  activeDeadlineSeconds: 180
+
+# Pod deletion configuration
+podDeletion:
+  # Minimum time in minutes before force deleting stuck pods
+  minTimeBeforeDeletion: 3
+  # Set to true to create Kubernetes events for audit trail
+  createEvents: true
+
+# Container image configuration
+image:
+  repository: bitnami/kubectl
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Security context configuration
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+
+# Pod node selector
+nodeSelector: {}
+
+# Pod tolerations
+tolerations: []
+
+# Pod affinity settings
+affinity: {}

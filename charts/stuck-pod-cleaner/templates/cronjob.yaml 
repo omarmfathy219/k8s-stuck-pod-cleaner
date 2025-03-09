@@ -1,0 +1,122 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stuck-pod-cleaner
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: stuck-pod-cleaner
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.cronJob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronJob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronJob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      {{- if .Values.cronJob.activeDeadlineSeconds }}
+      activeDeadlineSeconds: {{ .Values.cronJob.activeDeadlineSeconds }}
+      {{- end }}
+      template:
+        spec:
+          serviceAccountName: stuck-pod-cleaner
+          containers:
+          - name: kubectl
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Check for stuck terminating pods across all nodes
+              echo "Checking for stuck terminating pods across all nodes"
+              
+              # Define the namespace filter based on configuration
+              {{- if .Values.namespaces.scanAll }}
+              NAMESPACE_ARG="--all-namespaces"
+              EXCLUDE_NAMESPACES="{{ range .Values.namespaces.exclude }}{{ . }} {{ end }}"
+              {{- else }}
+              NAMESPACE_ARG="-n {{ range .Values.namespaces.include }}{{ . }} {{ end }}"
+              EXCLUDE_NAMESPACES=""
+              {{- end }}
+              
+              # Get all pods in Terminating state
+              STUCK_PODS=$(kubectl get pods $NAMESPACE_ARG --no-headers | grep "Terminating" | awk '{print $1"/"$2}')
+              
+              if [ -z "$STUCK_PODS" ]; then
+                echo "No pods in Terminating state found. Nothing to do."
+                exit 0
+              fi
+              
+              echo "Found pods in Terminating state: $STUCK_PODS"
+              
+              # Process each stuck pod
+              for POD in $STUCK_PODS; do
+                NAMESPACE=$(echo $POD | cut -d/ -f1)
+                POD_NAME=$(echo $POD | cut -d/ -f2)
+                
+                # Skip excluded namespaces
+                if [[ ! -z "$EXCLUDE_NAMESPACES" && "$EXCLUDE_NAMESPACES" == *"$NAMESPACE"* ]]; then
+                  echo "Pod $POD_NAME in namespace $NAMESPACE is in excluded namespace. Skipping."
+                  continue
+                fi
+                
+                # Check how long the pod has been terminating
+                TERMINATING_TIME=$(kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.metadata.deletionTimestamp}')
+                
+                if [ -z "$TERMINATING_TIME" ]; then
+                  echo "Pod $POD_NAME in namespace $NAMESPACE doesn't have a deletion timestamp. Skipping."
+                  continue
+                fi
+                
+                NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+                
+                # Calculate time difference (basic approach)
+                TERM_TIMESTAMP=$(date -d "$TERMINATING_TIME" +%s)
+                NOW_TIMESTAMP=$(date -d "$NOW" +%s)
+                DIFF_MINUTES=$(( ($NOW_TIMESTAMP - $TERM_TIMESTAMP) / 60 ))
+                
+                echo "Pod $POD_NAME in namespace $NAMESPACE has been terminating for $DIFF_MINUTES minutes."
+                
+                if [ $DIFF_MINUTES -ge {{ .Values.podDeletion.minTimeBeforeDeletion }} ]; then
+                  echo "Force deleting pod..."
+                  kubectl delete pod $POD_NAME -n $NAMESPACE --force --grace-period=0
+                  
+                  # Get the node name for logging
+                  NODE_NAME=$(kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.spec.nodeName}' 2>/dev/null || echo "unknown-node")
+                  
+                  {{- if .Values.podDeletion.createEvents }}
+                  # Record an event
+                  kubectl create event --field-manager=pod-cleaner \
+                    --type=Warning \
+                    --namespace=$NAMESPACE \
+                    --source=pod-cleaner-controller \
+                    --reason=StuckPodRemoved \
+                    --action=ForceDeleted \
+                    --message="Force deleted pod $POD_NAME that was stuck in Terminating state for $DIFF_MINUTES minutes on node $NODE_NAME" \
+                    $POD_NAME
+                  {{- end }}
+                    
+                  echo "Pod $POD_NAME in namespace $NAMESPACE force deleted successfully."
+                else
+                  echo "Pod $POD_NAME in namespace $NAMESPACE has been terminating for less than {{ .Values.podDeletion.minTimeBeforeDeletion }} minutes ($DIFF_MINUTES minutes). Skipping."
+                fi
+              done
+            resources:
+{{ toYaml .Values.resources | indent 14 }}
+            securityContext:
+{{ toYaml .Values.securityContext | indent 14 }}
+          restartPolicy: OnFailure
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+{{ toYaml . | indent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+{{ toYaml . | indent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+{{ toYaml . | indent 12 }}
+          {{- end }}

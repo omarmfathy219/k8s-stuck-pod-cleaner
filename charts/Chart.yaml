@@ -1,0 +1,20 @@
+apiVersion: v2
+name: stuck-pod-cleaner
+description: A Helm chart for Kubernetes stuck pod cleaner - automatically cleans up pods stuck in Terminating state
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kubernetes
+  - pods
+  - terminating
+  - stuck
+  - maintenance
+  - cleanup
+home: https://github.com/omarmfathy219/k8s-stuck-pod-cleaner
+sources:
+  - https://github.com/omarmfathy219/k8s-stuck-pod-cleaner
+maintainers:
+  - name: Omar Fathy
+    email: omarmfathy219@gmail.com
+icon: https://raw.githubusercontent.com/kubernetes/kubernetes/master/logo/logo.png

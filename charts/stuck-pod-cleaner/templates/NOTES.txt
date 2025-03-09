@@ -1,0 +1,19 @@
+k8s-stuck-pod-cleaner has been deployed!
+
+The CronJob will run according to the following schedule: {{ .Values.cronJob.schedule }}
+It will automatically detect and force-delete pods that have been stuck in Terminating state for more than {{ .Values.podDeletion.minTimeBeforeDeletion }} minutes.
+
+To view the logs of the CronJob:
+  kubectl logs -n {{ .Values.namespace }} -l app=stuck-pod-cleaner -f
+
+To check the status of the CronJob:
+  kubectl get cronjobs -n {{ .Values.namespace }} stuck-pod-cleaner
+
+To view the configuration:
+  kubectl describe cronjob -n {{ .Values.namespace }} stuck-pod-cleaner
+
+To uninstall:
+  helm uninstall {{ .Release.Name }}
+
+For more information, visit the project repository: 
+https://github.com/omarmfathy219/k8s-stuck-pod-cleaner
