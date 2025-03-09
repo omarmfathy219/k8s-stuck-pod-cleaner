@@ -16,6 +16,33 @@ This project provides a simple yet effective solution: a Kubernetes CronJob that
 - Force deletes them after a configurable time threshold (default: 3 minutes)
 - Creates Kubernetes events for audit and tracking
 
+## How It Works
+
+![Workflow Diagram](docs/workflow.svg)
+
+The stuck pod cleaner follows this process:
+
+1. **Scheduled Execution**: The CronJob runs on a configurable schedule (default: every minute)
+
+2. **Pod Discovery**: The job scans all pods across the cluster (or selected namespaces) to find those in the "Terminating" state
+
+3. **Time Analysis**: For each terminating pod, it calculates how long the pod has been in that state
+
+4. **Cleanup Decision**: Pods that have been stuck for longer than the threshold (default: 3 minutes) are force deleted
+
+5. **Audit Trail**: Kubernetes events are created to maintain a record of which pods were force deleted
+
+### Technical Implementation
+
+The solution is implemented as a Kubernetes CronJob that runs a container with the kubectl tool. This approach requires minimal resources and dependencies.
+
+#### Key Components:
+
+- **CronJob**: Provides the scheduling mechanism
+- **ServiceAccount**: Provides the necessary permissions
+- **ClusterRole/ClusterRoleBinding**: Grants permission to list/delete pods and create events
+- **Bash Script**: Contains the logic for identifying and cleaning up stuck pods
+
 ## Installation
 
 ### Option 1: Apply YAML directly
@@ -65,22 +92,31 @@ When using Helm, you can customize the installation using values:
 
 For a full list of configurable options, see the `values.yaml` file.
 
-## How It Works
+## Security Considerations
 
-1. The CronJob runs on schedule and lists all pods in the cluster
-2. It filters for pods in the Terminating state
-3. For each terminating pod, it calculates how long it's been in that state
-4. If a pod has been terminating for longer than the threshold, it force deletes it
-5. It creates a Kubernetes event for auditing purposes
+- The solution follows least privilege principles, requesting only the permissions it needs
+- The pod runs with a non-root user and a read-only filesystem when using Helm
+- Resource limits prevent the cleaner from consuming excessive cluster resources
 
-## RBAC
+## Troubleshooting
 
-The solution includes the necessary RBAC resources:
-- ServiceAccount: `pod-cleaner`
-- ClusterRole: `pod-cleaner-role`
-- ClusterRoleBinding: `pod-cleaner-binding`
+If you're experiencing issues with the cleaner, here are some common troubleshooting steps:
 
-These provide the minimum permissions required to list pods, delete pods, and create events.
+1. Check the CronJob logs:
+   ```
+   kubectl logs -n kube-system -l app=stuck-pod-cleaner
+   ```
+
+2. Verify RBAC permissions:
+   ```
+   kubectl auth can-i delete pods --as=system:serviceaccount:kube-system:pod-cleaner
+   kubectl auth can-i create events --as=system:serviceaccount:kube-system:pod-cleaner
+   ```
+
+3. Check CronJob history:
+   ```
+   kubectl get jobs -n kube-system
+   ```
 
 ## Repository Structure
 
@@ -88,6 +124,9 @@ These provide the minimum permissions required to list pods, delete pods, and cr
 .
 ├── README.md
 ├── stuck-pod-cleaner.yaml     # Standalone YAML for direct application
+├── docs/                      # Documentation assets
+│   ├── architecture.svg       # Architecture diagram
+│   └── workflow.svg           # Workflow diagram
 ├── charts/                    # Helm chart directory
 │   └── stuck-pod-cleaner/
 │       ├── Chart.yaml         # Chart metadata
