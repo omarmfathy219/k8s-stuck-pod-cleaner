@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-cleaner
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-cleaner-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pod-cleaner-binding
+subjects:
+- kind: ServiceAccount
+  name: pod-cleaner
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: pod-cleaner-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stuck-pod-cleaner
+  namespace: kube-system
+  labels:
+    app: stuck-pod-cleaner
+spec:
+  schedule: "* * * * *"  # Run every minute
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: pod-cleaner
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Check for stuck terminating pods across all nodes
+              echo "Checking for stuck terminating pods across all nodes"
+              
+              # Get all pods in Terminating state
+              STUCK_PODS=$(kubectl get pods --all-namespaces --no-headers | grep "Terminating" | awk '{print $1"/"$2}')
+              
+              if [ -z "$STUCK_PODS" ]; then
+                echo "No pods in Terminating state found. Nothing to do."
+                exit 0
+              fi
+              
+              echo "Found pods in Terminating state: $STUCK_PODS"
+              
+              # Process each stuck pod
+              for POD in $STUCK_PODS; do
+                NAMESPACE=$(echo $POD | cut -d/ -f1)
+                POD_NAME=$(echo $POD | cut -d/ -f2)
+                
+                # Check how long the pod has been terminating
+                TERMINATING_TIME=$(kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.metadata.deletionTimestamp}')
+                
+                if [ -z "$TERMINATING_TIME" ]; then
+                  echo "Pod $POD_NAME in namespace $NAMESPACE doesn't have a deletion timestamp. Skipping."
+                  continue
+                fi
+                
+                NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+                
+                # Calculate time difference (basic approach)
+                TERM_TIMESTAMP=$(date -d "$TERMINATING_TIME" +%s)
+                NOW_TIMESTAMP=$(date -d "$NOW" +%s)
+                DIFF_MINUTES=$(( ($NOW_TIMESTAMP - $TERM_TIMESTAMP) / 60 ))
+                
+                echo "Pod $POD_NAME in namespace $NAMESPACE has been terminating for $DIFF_MINUTES minutes."
+                
+                if [ $DIFF_MINUTES -ge 3 ]; then
+                  echo "Force deleting pod..."
+                  kubectl delete pod $POD_NAME -n $NAMESPACE --force --grace-period=0
+                  
+                  # Get the node name for logging
+                  NODE_NAME=$(kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.spec.nodeName}' 2>/dev/null || echo "unknown-node")
+                  
+                  # Record an event
+                  kubectl create event --field-manager=pod-cleaner \
+                    --type=Warning \
+                    --namespace=$NAMESPACE \
+                    --source=pod-cleaner-controller \
+                    --reason=StuckPodRemoved \
+                    --action=ForceDeleted \
+                    --message="Force deleted pod $POD_NAME that was stuck in Terminating state for $DIFF_MINUTES minutes on node $NODE_NAME" \
+                    $POD_NAME
+                    
+                  echo "Pod $POD_NAME in namespace $NAMESPACE force deleted successfully."
+                else
+                  echo "Pod $POD_NAME in namespace $NAMESPACE has been terminating for less than 3 minutes ($DIFF_MINUTES minutes). Skipping."
+                fi
+              done
+          restartPolicy: OnFailure
