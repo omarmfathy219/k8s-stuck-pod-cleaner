@@ -2,6 +2,8 @@
 
 A Kubernetes CronJob that automatically cleans up pods stuck in Terminating state.
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/k8s-stuck-pod-cleaner)](https://artifacthub.io/packages/search?repo=k8s-stuck-pod-cleaner)
+
 ![Architecture Diagram](docs/architecture.svg)
 
 ## 🚨 Problem
