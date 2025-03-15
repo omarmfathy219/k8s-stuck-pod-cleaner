@@ -18,3 +18,5 @@ maintainers:
   - name: Omar Fathy
     email: omarmfathy219@gmail.com
 icon: https://raw.githubusercontent.com/kubernetes/kubernetes/master/logo/logo.png
+annotations:
+  artifacthub.io/official: "true"
