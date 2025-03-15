@@ -66,6 +66,16 @@ helm install stuck-pod-cleaner omarmfathy219/stuck-pod-cleaner
 helm install stuck-pod-cleaner omarmfathy219/stuck-pod-cleaner --set podDeletion.minTimeBeforeDeletion=5
 ```
 
+### Secure Installation (Optional)
+
+This Helm chart is cryptographically signed for enhanced security. To verify the signature during installation:
+
+```bash
+helm install --verify stuck-pod-cleaner omarmfathy219/stuck-pod-cleaner
+```
+
+The public GPG key used for signing is available in the [helm-charts repository](https://github.com/omarmfathy219/helm-charts/blob/main/pubkey.gpg).
+
 ## ⚙️ Configuration
 
 ### YAML Configuration
@@ -99,6 +109,8 @@ For a full list of configurable options, see the `values.yaml` file.
 - 🛡️ The solution follows least privilege principles, requesting only the permissions it needs
 - 👤 The pod runs with a non-root user and a read-only filesystem when using Helm
 - 📊 Resource limits prevent the cleaner from consuming excessive cluster resources
+- 🔐 Helm chart is cryptographically signed to verify authenticity and integrity
+- 🔑 RBAC permissions are scoped to the minimum required for operation
 
 ## 🔍 Troubleshooting
 
@@ -120,6 +132,11 @@ If you're experiencing issues with the cleaner, here are some common troubleshoo
    kubectl get jobs -n kube-system
    ```
 
+4. Verify Helm chart signature:
+   ```
+   helm verify omarmfathy219/stuck-pod-cleaner --version 0.1.0
+   ```
+
 ## 📁 Repository Structure
 
 ```
@@ -133,6 +150,7 @@ If you're experiencing issues with the cleaner, here are some common troubleshoo
 │   └── stuck-pod-cleaner/
 │       ├── Chart.yaml         # Chart metadata
 │       ├── values.yaml        # Default configuration values
+│       ├── values.schema.json # JSON Schema for validating values
 │       └── templates/         # Chart templates
 │           ├── cronjob.yaml   # Main CronJob definition
 │           ├── rbac.yaml      # RBAC resources
